@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planck's Constant from LEDs</title>
+<meta name="description" content="Measuring Planck's constant from the turn-on voltages of four LEDs, using an ESP32 as a data logger.">
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --surface: #ffffff;
+    --ink: #1d1d1b;
+    --ink-2: #4a4a46;
+    --muted: #77756f;
+    --rule: #e4e1da;
+    --accent: #1f5fbf;
+    --code-bg: #f2f0ea;
+    --red: #c62828; --yellow: #c98a00; --green: #2e8b3e; --blue: #1f5fbf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161614; --surface: #1f1f1c; --ink: #ecebe6; --ink-2: #c4c2bb;
+      --muted: #96948d; --rule: #34332f; --accent: #7aa7ec; --code-bg: #272724;
+      --red: #ef6b6b; --yellow: #e6b23a; --green: #5cbf6c; --blue: #7aa7ec;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161614; --surface: #1f1f1c; --ink: #ecebe6; --ink-2: #c4c2bb;
+    --muted: #96948d; --rule: #34332f; --accent: #7aa7ec; --code-bg: #272724;
+    --red: #ef6b6b; --yellow: #e6b23a; --green: #5cbf6c; --blue: #7aa7ec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.6 Georgia, "Iowan Old Style", "Times New Roman", serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 16px 80px; }
+  h1, h2, h3 { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.25; }
+  h1 { font-size: 2rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.25rem; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  .lede { color: var(--ink-2); font-size: 1.1rem; margin: 0 0 32px; }
+  a { color: var(--accent); }
+  .result {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+    padding: 20px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px;
+  }
+  .result .label { font: 600 0.75rem/1.2 system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .result .value { font: 600 1.6rem/1.3 system-ui, sans-serif; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .result .sub { font-size: 0.9rem; color: var(--ink-2); }
+  .eq {
+    font-family: "Cambria Math", "STIX Two Math", Georgia, serif; font-size: 1.1rem;
+    text-align: center; margin: 16px 0; padding: 12px; background: var(--code-bg); border-radius: 8px;
+    overflow-x: auto;
+  }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font: 0.95rem/1.4 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 0; }
+  figure { margin: 24px 0; }
+  figure img { width: 100%; height: auto; display: block; background: #fff; border-radius: 8px; border: 1px solid var(--rule); }
+  figcaption { font-size: 0.9rem; color: var(--ink-2); margin-top: 8px; }
+  code, pre { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.88em; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
+  pre code { background: none; padding: 0; }
+  ul.files { list-style: none; padding: 0; }
+  ul.files li { padding: 6px 0; border-bottom: 1px solid var(--rule); }
+  ul.files li span { color: var(--muted); font-size: 0.9rem; }
+  .note { color: var(--ink-2); font-size: 0.95rem; }
+  footer { margin-top: 56px; color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Measuring Planck's Constant with LEDs</h1>
+<p class="lede">Four LEDs, an ESP32, and a potentiometer. Each LED's turn-on voltage tracks the energy of the photons it emits, so a plot of turn-on voltage against 1/wavelength has a slope of <i>hc/e</i>.</p>
+
+<div class="result" aria-label="Headline result">
+  <div>
+    <div class="label">Planck's constant</div>
+    <div class="value">(7.9 ± 0.6) × 10<sup>−34</sup> J·s</div>
+    <div class="sub">Accepted: 6.626 × 10<sup>−34</sup> J·s</div>
+  </div>
+  <div>
+    <div class="label">Difference</div>
+    <div class="value">+19%</div>
+    <div class="sub">About 2 standard deviations above the accepted value</div>
+  </div>
+  <div>
+    <div class="label">Slope of V<sub>0</sub> vs 1/λ</div>
+    <div class="value">1.48 × 10<sup>−6</sup> V·m</div>
+    <div class="sub">Expected 1.240 × 10<sup>−6</sup> V·m, R² = 0.987</div>
+  </div>
+</div>
+
+<h2>Theory</h2>
+<p>An electron crossing the LED's junction gains energy <i>eV</i>. Light comes out once that energy is enough to make a photon of energy <i>hc/λ</i>, so at the threshold voltage <i>V</i><sub>0</sub>:</p>
+<div class="eq">eV<sub>0</sub> ≈ hc / λ &nbsp;&nbsp;⇒&nbsp;&nbsp; V<sub>0</sub> ≈ (hc/e) · (1/λ) + constant</div>
+<p>Plotting <i>V</i><sub>0</sub> against 1/λ for several colours gives a straight line with slope <i>hc/e</i>. Using the slope instead of any single LED cancels voltage offsets that are the same for every LED.</p>
+
+<h2>Setup</h2>
+<p>A potentiometer across the ESP32's 5 V supply feeds the LED through a 470 Ω resistor. A 100 Ω sense resistor below the LED gives the current. The ESP32 reads both sides of the LED on its ADC, averaging 64 readings per point, and streams CSV over USB at about 18 points per second.</p>
+<pre><code>5 V ─ pot ─ wiper ─ 470 Ω ─┬─ LED ─┬─ 100 Ω ─ GND
+                           │       │
+                    10 kΩ ─ GPIO34  GPIO35
+                    (anode)  (cathode / sense)
+
+V_LED = V(anode) − V(cathode)       I = V(cathode) / 100 Ω</code></pre>
+<p>A Python script reads the serial stream, plots the I-V curve live, and saves one CSV per LED while the knob is turned slowly from zero to full.</p>
+
+<h2>Finding each threshold voltage</h2>
+<p>For each LED, the data were cleaned, a straight line was fitted to the steep part of the I-V curve between 2.0 and 3.5 mA, and the line was extended to <i>I</i> = 0.</p>
+<figure>
+  <img src="figures/led_iv_fits.png" alt="Current against voltage for red, yellow, green and blue LEDs. Each curve is flat at 1.42 mA, the ESP32's measurement floor, then rises steeply. Linear fits through 2 to 3.5 mA cross zero current at 1.80 V for red, 1.89 V for yellow, 2.29 V for green and 2.56 V for blue." loading="lazy">
+  <figcaption>I-V curves for all four LEDs. The shaded band is the 2.0 to 3.5 mA fit window, and each line is extended down to I = 0 to give V<sub>0</sub>.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>LED</th><th>λ (nm)</th><th>1/λ (µm⁻¹)</th><th>V<sub>0</sub> (V)</th><th>Points in fit</th></tr></thead>
+  <tbody>
+    <tr><td><span class="swatch" style="background:var(--red)"></span>Red</td><td>630</td><td>1.587</td><td>1.799</td><td>111</td></tr>
+    <tr><td><span class="swatch" style="background:var(--yellow)"></span>Yellow</td><td>590</td><td>1.695</td><td>1.893</td><td>65</td></tr>
+    <tr><td><span class="swatch" style="background:var(--green)"></span>Green</td><td>525</td><td>1.905</td><td>2.294</td><td>111</td></tr>
+    <tr><td><span class="swatch" style="background:var(--blue)"></span>Blue</td><td>470</td><td>2.128</td><td>2.561</td><td>156</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="note">Changing the fit window to 2.0 to 3.0, 2.5 to 3.5 or 2.0 to 4.0 mA moves each V<sub>0</sub> by at most 0.02 V (red) and about 0.01 V for the others.</p>
+
+<h2>V<sub>0</sub> against 1/λ</h2>
+<figure>
+  <img src="figures/led_v0_vs_inv_lambda.png" alt="Threshold voltage against 1/wavelength for the four LEDs. The points rise from red at 1.80 V to blue at 2.56 V and lie close to a straight fitted line with slope 1.477 times 10 to the minus 6 volt-metres." loading="lazy">
+  <figcaption>Threshold voltage against 1/wavelength. The fitted line has slope (1.48 ± 0.12) × 10<sup>−6</sup> V·m and intercept −0.56 ± 0.22 V.</figcaption>
+</figure>
+<p>Converting the slope to Planck's constant:</p>
+<div class="eq">h = slope × e / c = (1.477 × 10<sup>−6</sup> V·m)(1.602 × 10<sup>−19</sup> C) / (2.998 × 10<sup>8</sup> m/s) = (7.9 ± 0.6) × 10<sup>−34</sup> J·s</div>
+
+<h2>Sources of error</h2>
+<ul>
+  <li><b>Assumed wavelengths.</b> The wavelengths are typical values for each colour, not datasheet or spectrometer measurements. This is the largest uncertainty: green LEDs, for example, can be 525 nm or 565 nm depending on the chip.</li>
+  <li><b>What "threshold" means.</b> LEDs emit over a range of wavelengths and turn on gradually, so extrapolating a straight line is a convention. It also includes the voltage lost in the LED's internal resistance.</li>
+  <li><b>ESP32 measurement floor.</b> The ADC can't read below about 0.14 V, which shows up as a 1.42 mA floor across the 100 Ω sense resistor. Only data well above it was fitted.</li>
+  <li><b>ADC clipping.</b> The ADC tops out near 3.1 V. For the blue LED, 237 points where the anode reading hit that ceiling were removed.</li>
+  <li><b>Few points.</b> With four LEDs, one off point moves the slope noticeably. The ±0.6 × 10<sup>−34</sup> uncertainty is from the line fit only.</li>
+</ul>
+
+<h2>Data cleaning</h2>
+<ul>
+  <li>Rows logged before an ESP32 reset (the clock jumping backwards and staying low) are dropped.</li>
+  <li>Single garbled serial lines, whose timestamp is out of order with both neighbours, are dropped. One appeared in the red run.</li>
+  <li>Points where V<sub>LED</sub> + 0.1 × I<sub>mA</sub> (the anode voltage) is at or above 3.1 V are dropped as clipped.</li>
+</ul>
+
+<h2>Data and code</h2>
+<ul class="files">
+  <li><a href="data/red.csv">red.csv</a>, <a href="data/yellow.csv">yellow.csv</a>, <a href="data/green.csv">green.csv</a>, <a href="data/blue.csv">blue.csv</a> <span>Raw I-V data: t_ms, V_led_V, I_mA</span></li>
+  <li><a href="data/led_v0_results.csv">led_v0_results.csv</a> <span>Fitted threshold voltages</span></li>
+  <li><a href="code/planck_led_logger.ino">planck_led_logger.ino</a> <span>ESP32 firmware</span></li>
+  <li><a href="code/led_logger.py">led_logger.py</a> <span>Live plotter and CSV logger</span></li>
+  <li><a href="code/led_analysis.py">led_analysis.py</a> <span>Cleaning, fits and figures</span></li>
+</ul>
+<p class="note">To reproduce the figures, run the analysis from the <code>data</code> folder:</p>
+<pre><code>cd data
+python ../code/led_analysis.py</code></pre>
+
+<footer>Planck's constant LED experiment · November 2026</footer>
+</main>
+</body>
+</html>
